@@ -304,7 +304,7 @@ void DHT11_receive(){      //接收40位的数据
 
         DHT11_delay_us(25);    //结束
 
-        if ((R_H + R_L + T_H + T_L) == revise){      //
+        if ((R_H + R_L + T_H + T_L) == revise){      //校正
             RH = R_H;
             RL = R_L;
             TH = T_H;
