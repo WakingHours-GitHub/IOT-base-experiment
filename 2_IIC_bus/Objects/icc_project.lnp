@@ -1,3 +1,0 @@
-".\Objects\main2.obj" 
-TO ".\Objects\icc_project" 
-PRINT(".\Listings\icc_project.m51")
