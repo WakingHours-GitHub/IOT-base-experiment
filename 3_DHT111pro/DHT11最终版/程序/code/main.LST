@@ -1,0 +1,720 @@
+C51 COMPILER V9.57.0.0   MAIN                                                              05/12/2022 15:39:07 PAGE 1   
+
+
+C51 COMPILER V9.57.0.0, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN main.OBJ
+COMPILER INVOKED BY: D:\KEIL\Keil_v5\C51\BIN\C51.EXE main.c OPTIMIZE(8,SPEED) BROWSE DEBUG OBJECTEXTEND TABS(2)
+
+line level    source
+
+   1          #include "reg52.H"
+   2          #include "stdio.h"
+   3          #include "intrins.h"
+   4          #include <math.h>
+   5          
+   6          #define uchar unsigned char
+   7          #define uint unsigned int
+   8          
+   9          #define DB P0//Òº¾§²¢ÐÐÊý¾Ý½Ó¿Ú
+  10          sbit RS = P2 ^ 0;//Òº¾§Ö¸ÁîÊý¾ÝÐÅºÅ
+  11          sbit RW = P2 ^ 1;//Òº¾§¶ÁÐ´ÐÅºÅ
+  12          sbit E = P2 ^ 2;//Òº¾§Ê¹ÄÜÐÅºÅ
+  13          
+  14          sbit T_IO = P1 ^ 2;     //clkÎªDS1302µÄÊ±ÖÓÐÅºÅÏß
+  15          sbit T_CLK = P1 ^ 7;    //DATÎªDS1302µÄI/OÊý¾ÝÏß
+  16          sbit T_RST = P2 ^ 3;    //RSTÎªDS1302µÄRSTÐÅºÅÏß  
+  17          
+  18          uchar bdata
+  19          datbyte;
+  20          sbit datbyte0 = datbyte ^ 0;
+  21          sbit datbyte7 = datbyte ^ 7;
+  22          
+  23          uchar time_1302[7] = {0x00, 0x00, 0x00, 0x03, 0x07, 0x03, 0x08};//ÉèÖÃÊ±¼ä³õÊ¼ÖµÊý×é
+  24          //  Ãë   ·Ö   Ê±   ºÅ  ÔÂ·Ý ÐÇÆÚ  Äê
+  25          //DS1302º¯ÊýÉùÃ÷
+  26          void get_1302(uchar time[]);
+  27          
+  28          void write_ds1302(uchar dat);
+  29          
+  30          uchar r_1302(uchar add);
+  31          
+  32          void w_1302(uchar add, uchar dat);
+  33          
+  34          uchar read_ds1302(void);
+  35          
+  36          void init_1302(uchar *time);
+  37          
+  38          void change();
+  39          
+  40          uchar times[9];//±£´æÊ±¼ä
+  41          uchar date[11];//±£´æÈÕÆÚ
+  42          
+  43          unsigned char key_value;//»ñÈ¡µ½°´¼üµÄÖµ
+  44          
+  45          sbit Data = P1 ^ 1;       //ÎÂÊª¶ÈIO
+  46          signed char humi_value;//Êª¶È
+  47          signed char temp_value;//ÎÂ¶È
+  48          
+  49          unsigned char now_window;//µ±Ç°ÏÔÊ¾´°¿Ú
+  50          unsigned char curr_menu;
+  51          #define  normal_mode  0x10//ÏÔÊ¾Ä£Ê½
+  52          #define  set_mode  0x20//ÉèÖÃÄ£Ê½
+  53          
+  54          signed char AlarmTL = 10;                // ÎÂ¶ÈÏÂÏÞ±¨¾¯Öµ
+  55          signed char AlarmTH = 30;                // ÎÂ¶ÈÉÏÏÞ±¨¾¯Öµ
+C51 COMPILER V9.57.0.0   MAIN                                                              05/12/2022 15:39:07 PAGE 2   
+
+  56          signed char AlarmHL = 40;          // Êª¶ÈÏÂÏÞ±¨¾¯Öµ
+  57          signed char AlarmHH = 80;                // Êª¶ÈÉÏÏÞ±¨¾¯Öµ
+  58          
+  59          unsigned char i;
+  60          unsigned char cnt_100ms, cnt_500ms = 0;
+  61          unsigned char time_100ms_flag;
+  62          //unsigned char open_del;//¿ªËø³É¹¦ÑÓÊ±¼ÆÊý
+  63          //unsigned char open_flag;//Ëø×´Ì¬±êÖ¾
+  64          sbit beep = P1 ^ 0;
+  65          
+  66          sbit LedTL_P = P1 ^ 3;            // ÎÂ¶È¹ýµÍ±¨¾¯Ö¸Ê¾µÆ
+  67          sbit LedTH_P = P1 ^ 4;            // ÎÂ¶È¹ý¸ß±¨¾¯Ö¸Ê¾µÆ
+  68          sbit LedHL_P = P1 ^ 5;            // Êª¶È¹ýµÍ±¨¾¯Ö¸Ê¾µÆ
+  69          sbit LedHH_P = P1 ^ 6;            // Êª¶È¹ý¸ß±¨¾¯Ö¸Ê¾µÆ
+  70          
+  71          /*******************************************************************************
+  72          * º¯ Êý Ãû         : delay_ms
+  73          * º¯Êý¹¦ÄÜ       : ÑÓÊ±º¯Êý£¬ÑÓÊ±1ms
+  74          * Êä    Èë         : cnt
+  75          * Êä    ³ö         : ÎÞ
+  76          * Ëµ    Ãû         : ¸Ãº¯ÊýÊÇÔÚ12MHZ¾§ÕñÏÂ£¬12·ÖÆµµ¥Æ¬»úµÄÑÓÊ±¡£
+  77          *******************************************************************************/
+  78          void delay_ms(unsigned int cnt)   //
+  79          {
+  80   1          unsigned int x;
+  81   1          for (; cnt > 0; cnt--) {
+  82   2              for (x = 110; x > 0; x--);//Èí¼þÑÓÊ±Îª1MS
+  83   2          }
+  84   1      }
+  85          
+  86          #if 0
+              void delay_us(unsigned int cnt)   //
+              {
+                  while(cnt--);
+              }
+              #endif
+  92          
+  93          /******************************************************
+  94          ** º¯ÊýÃû£ºtime_init
+  95          ** ÃèÊö  £º¶¨Ê±Æ÷³õÊ¼»¯
+  96          ** ÊäÈë  £ºÎÞ
+  97          ** Êä³ö  £ºÎÞ
+  98          ******************************************************/
+  99          void time_init(void) {
+ 100   1          TMOD |= 0x01;//time0 ¹¤×÷·½Ê½Îª1
+ 101   1          TH0 = 0xf8;//×°ÔØ³õÖµ
+ 102   1          TL0 = 0x2f;//×°ÔØ³õÖµ£¬Îª2ms(65535-63535)
+ 103   1          TR0 = 1;//¿ªÆô¶¨Ê±Æ÷
+ 104   1          ET0 = 1;//´ò¿ªÖÐ¶Ï
+ 105   1          EA = 1;
+ 106   1      }
+ 107          
+ 108          /******************************************************
+ 109          ** º¯ÊýÃû£ºkey_scan
+ 110          ** ÃèÊö  £º°´¼üÉ¨Ãè
+ 111          ** ÊäÈë  £ºÎÞ
+ 112          ** Êä³ö  £ºÎÞ
+ 113          ******************************************************/
+ 114          void key_scan(void) {
+ 115   1          static unsigned char key_in_flag = 0;//°´¼ü°´ÏÂ±êÖ¾
+ 116   1          unsigned char key_l;//´æ´¢É¨Ãèµ½ÐÐÁÐÖµ¡£
+ 117   1          key_value = 20;//°´¼üÖµÇå³ý
+C51 COMPILER V9.57.0.0   MAIN                                                              05/12/2022 15:39:07 PAGE 3   
+
+ 118   1          if ((P3 & 0x0f) != 0x0f)//°´¼ü°´ÏÂ
+ 119   1          {
+ 120   2              delay_ms(1);//°´¼üÏû¶¶¶¯
+ 121   2              if (((P3 & 0x0f) != 0x0f) && (key_in_flag == 1)) {
+ 122   3                  key_in_flag = 0;//ËÉÊÖ¼ì²â·ÀÖ¹Ò»Ö±´¥·¢
+ 123   3                  P3 = 0x0f;
+ 124   3                  //delay_ms(1);//°´¼üÏû¶¶¶¯
+ 125   3                  key_l = P3;//É¨ÃèµÃµ½°´¼üÖµ
+ 126   3                  switch (key_l) {
+ 127   4                      //»ñÈ¡°´¼üÖµ
+ 128   4                      case 0x0e: {
+ 129   5                          key_value = 1;
+ 130   5                      }
+ 131   4                          break;
+ 132   4                      case 0x0d: {
+ 133   5                          key_value = 2;
+ 134   5                      }
+ 135   4                          break;
+ 136   4                      case 0x0b: {
+ 137   5                          key_value = 3;
+ 138   5                      }
+ 139   4                          break;
+ 140   4                          //case 0x70:
+ 141   4                          //break;
+ 142   4                  }
+ 143   3              }
+ 144   2          } else {
+ 145   2              key_in_flag = 1;//(°´¼üËÉ¿ª±êÖ¾)
+ 146   2          }
+ 147   1      
+ 148   1      }
+ 149          
+ 150          /*******************************************************************************
+ 151          * º¯ Êý Ãû         : LcdWriteCom
+ 152          * º¯Êý¹¦ÄÜ       : ÏòLCDÐ´ÈëÒ»¸ö×Ö½ÚµÄÃüÁî
+ 153          * Êä    Èë         : u8com
+ 154          * Êä    ³ö         : ÎÞ
+ 155          *******************************************************************************/
+ 156          void lcd_wri_com(unsigned char com)      //Ð´ÈëÃüÁî
+ 157          {
+ 158   1          E = 0;     //Ê¹ÄÜÇåÁã
+ 159   1          RS = 0;     //Ñ¡ÔñÐ´ÈëÃüÁî
+ 160   1          RW = 0;     //Ñ¡ÔñÐ´Èë
+ 161   1      
+ 162   1          DB = com;
+ 163   1          delay_ms(1);
+ 164   1      
+ 165   1          E = 1;     //Ð´ÈëÊ±Ðò
+ 166   1          delay_ms(5);
+ 167   1          E = 0;
+ 168   1      }
+ 169          
+ 170          /*******************************************************************************
+ 171          * º¯ Êý Ãû         : LcdWriteData
+ 172          * º¯Êý¹¦ÄÜ       : ÏòLCDÐ´ÈëÒ»¸ö×Ö½ÚµÄÊý¾Ý
+ 173          * Êä    Èë         : u8dat
+ 174          * Êä    ³ö         : ÎÞ
+ 175          *******************************************************************************/
+ 176          
+ 177          void lcd_wri_data(unsigned char dat)//Ð´ÈëÊý¾Ý
+ 178          {
+ 179   1          E = 0;      //Ê¹ÄÜÇåÁã
+C51 COMPILER V9.57.0.0   MAIN                                                              05/12/2022 15:39:07 PAGE 4   
+
+ 180   1          RS = 1;      //Ñ¡ÔñÐ´ÈëÊý¾Ý
+ 181   1          RW = 0;      //Ñ¡ÔñÐ´Èë
+ 182   1          DB = dat;
+ 183   1          delay_ms(1);
+ 184   1          E = 1;      //Ð´ÈëÊ±Ðò
+ 185   1          delay_ms(5);
+ 186   1          E = 0;
+ 187   1      }
+ 188          
+ 189          /*******************************************************************************
+ 190          * º¯ Êý Ãû         : WriString
+ 191          * º¯Êý¹¦ÄÜ       : Ë¢ÐÂÆÁÄ»ÏÔÊ¾
+ 192          * Êä    Èë         : hang£¬add£¬*p
+ 193          * Êä    ³ö         : ÎÞ
+ 194          *******************************************************************************/
+ 195          void wri_string(unsigned char y, unsigned char x, unsigned char *p) {
+ 196   1          if (y == 1)//Èç¹ûÑ¡ÔñµÚÒ»ÐÐ
+ 197   1              lcd_wri_com(0x80 + x);//Ñ¡ÖÐµØÖ·
+ 198   1          else
+ 199   1              lcd_wri_com(0xc0 + x);//Ñ¡ÖÐµØÖ·
+ 200   1          while (*p) {
+ 201   2              lcd_wri_data(*p);//Ð´ÈëÊý¾Ý
+ 202   2              p++;
+ 203   2          }
+ 204   1      }
+ 205          
+ 206          /*******************************************************************************
+ 207          * º¯ Êý Ãû         : lcd_write_char
+ 208          * º¯Êý¹¦ÄÜ       :
+ 209          * Êä    Èë         :
+ 210          * Êä    ³ö         : ÎÞ
+ 211          *******************************************************************************/
+ 212          void lcd_write_char(unsigned char y, unsigned char x, unsigned char dat) //ÁÐx=0~15,ÐÐy=0,1
+ 213          {
+ 214   1          unsigned char temp_l, temp_h;
+ 215   1          if (y == 1)//Èç¹ûÑ¡ÔñµÚÒ»ÐÐ
+ 216   1              lcd_wri_com(0x80 + x);//Ñ¡ÖÐµØÖ·
+ 217   1          else
+ 218   1              lcd_wri_com(0xc0 + x);//Ñ¡ÖÐµØÖ·
+ 219   1          temp_l = dat % 10;
+ 220   1          temp_h = dat / 10;
+ 221   1          lcd_wri_data(temp_h + 0x30);          //convert to ascii
+ 222   1          lcd_wri_data(temp_l + 0x30);
+ 223   1      }
+ 224          
+ 225          /*********************¹â±ê¿ØÖÆ***********************/
+ 226          void lcd1602_guanbiao(unsigned char y, unsigned char x, unsigned char on_off) {
+ 227   1          if (on_off == 1)   //¿ª¹â±ê
+ 228   1          {
+ 229   2              if (y == 1)//Èç¹ûÑ¡ÔñµÚÒ»ÐÐ
+ 230   2                  lcd_wri_com(0x80 + x);
+ 231   2              else
+ 232   2                  lcd_wri_com(0xc0 + x);//½«¹â±êÒÆ¶¯µ½Ãë¸öÎ»
+ 233   2              lcd_wri_com(0x0f);//ÏÔÊ¾¹â±ê²¢ÇÒÉÁË¸
+ 234   2          } else {
+ 235   2              if (y == 1)//Èç¹ûÑ¡ÔñµÚÒ»ÐÐ
+ 236   2                  lcd_wri_com(0x80 + x);
+ 237   2              else
+ 238   2                  lcd_wri_com(0xc0 + x);//½«¹â±êÒÆ¶¯µ½Ãë¸öÎ»
+ 239   2              lcd_wri_com(0x0c);   //¹Ø¹â±ê
+ 240   2          }
+ 241   1      }
+C51 COMPILER V9.57.0.0   MAIN                                                              05/12/2022 15:39:07 PAGE 5   
+
+ 242          
+ 243          /*******************************************************************************
+ 244          * º¯ Êý Ãû       : LcdInit()
+ 245          * º¯Êý¹¦ÄÜ     : ³õÊ¼»¯LCDÆÁ
+ 246          * Êä    Èë       : ÎÞ
+ 247          * Êä    ³ö       : ÎÞ
+ 248          *******************************************************************************/
+ 249          void lcd_init(void)                          //LCD³õÊ¼»¯×Ó³ÌÐò
+ 250          {
+ 251   1          lcd_wri_com(0x38);//ÖÃ¹¦ÄÜ8Î»Ë«ÐÐ
+ 252   1          lcd_wri_com(0x0c);//ÏÔÊ¾¿ª¹Ø¹â±ê
+ 253   1          lcd_wri_com(0x06);//×Ö·û½øÈëÄ£Ê½ÆÁÄ»²»¶¯×Ö·ûºóÒÆ
+ 254   1          delay_ms(5);//ÑÓÊ±5ms
+ 255   1          lcd_wri_com(0x01);  //ÇåÆÁ
+ 256   1          wri_string(1, 0, times);//³õÊ¼»¯ÏÔÊ¾
+ 257   1          wri_string(1, 6, date);
+ 258   1          wri_string(2, 0, "H:   %RH T:   C ");//³õÊ¼»¯ÏÔÊ¾
+ 259   1      }
+ 260          
+ 261          void DHT11_delay_us(unsigned char n) {
+ 262   1          while (--n);
+ 263   1      }
+ 264          
+ 265          void DHT11_delay_ms(unsigned int z) {
+ 266   1          unsigned int i, j;
+ 267   1          for (i = z; i > 0; i--)
+ 268   1              for (j = 110; j > 0; j--);
+ 269   1      }
+ 270          
+ 271          void DHT11_start() {
+ 272   1          Data = 1;
+ 273   1          DHT11_delay_us(2);
+ 274   1          Data = 0;
+ 275   1          DHT11_delay_ms(30);   //ÑÓÊ±18msÒÔÉÏ
+ 276   1          Data = 1;
+ 277   1          DHT11_delay_us(30);
+ 278   1      }
+ 279          
+ 280          unsigned char DHT11_rec_byte()      //½ÓÊÕÒ»¸ö×Ö½Ú
+ 281          {
+ 282   1          unsigned char i, dat = 0;
+ 283   1          for (i = 0; i < 8; i++)    //´Ó¸ßµ½µÍÒÀ´Î½ÓÊÕ8Î»Êý¾Ý
+ 284   1          {
+ 285   2              while (!Data);   ////µÈ´ý50usµÍµçÆ½¹ýÈ¥
+ 286   2              DHT11_delay_us(8);     //ÑÓÊ±60us£¬Èç¹û»¹Îª¸ßÔòÊý¾ÝÎª1£¬·ñÔòÎª0
+ 287   2              dat <<= 1;           //ÒÆÎ»Ê¹ÕýÈ·½ÓÊÕ8Î»Êý¾Ý£¬Êý¾ÝÎª0Ê±Ö±½ÓÒÆÎ»
+ 288   2              if (Data == 1)    //Êý¾ÝÎª1Ê±£¬Ê¹dat¼Ó1À´½ÓÊÕÊý¾Ý1
+ 289   2                  dat += 1;
+ 290   2              while (Data);  //µÈ´ýÊý¾ÝÏßÀ­µÍ
+ 291   2          }
+ 292   1          return dat;
+ 293   1      }
+ 294          
+ 295          void DHT11_receive()      //½ÓÊÕ40Î»µÄÊý¾Ý
+ 296          {
+ 297   1          unsigned char R_H, R_L, T_H, T_L, RH, RL, TH, TL, revise;
+ 298   1          DHT11_start();
+ 299   1          if (Data == 0) {
+ 300   2              while (Data == 0);   //µÈ´ýÀ­¸ß
+ 301   2              DHT11_delay_us(40);  //À­¸ßºóÑÓÊ±80us
+ 302   2              R_H = DHT11_rec_byte();    //½ÓÊÕÊª¶È¸ß°ËÎ»
+ 303   2              R_L = DHT11_rec_byte();    //½ÓÊÕÊª¶ÈµÍ°ËÎ»
+C51 COMPILER V9.57.0.0   MAIN                                                              05/12/2022 15:39:07 PAGE 6   
+
+ 304   2              T_H = DHT11_rec_byte();    //½ÓÊÕÎÂ¶È¸ß°ËÎ»
+ 305   2              T_L = DHT11_rec_byte();    //½ÓÊÕÎÂ¶ÈµÍ°ËÎ»
+ 306   2              revise = DHT11_rec_byte(); //½ÓÊÕÐ£ÕýÎ»
+ 307   2      
+ 308   2              DHT11_delay_us(25);    //½áÊø
+ 309   2      
+ 310   2              if ((R_H + R_L + T_H + T_L) == revise)      //Ð£Õý
+ 311   2              {
+ 312   3                  RH = R_H;
+ 313   3                  RL = R_L;
+ 314   3                  TH = T_H;
+ 315   3                  TL = T_L;
+ 316   3              }
+ 317   2              humi_value = RH;
+ 318   2              temp_value = TH;
+ 319   2          }
+ 320   1      }
+ 321          
+ 322          
+ 323          void AlarmJudge(void) {
+ 324   1          if (temp_value > AlarmTH)// ÎÂ¶ÈÊÇ·ñ¹ý¸ß
+ 325   1          {
+ 326   2              LedTH_P = 0;
+ 327   2              LedTL_P = 1;
+ 328   2          } else if (temp_value < AlarmTL)// ÎÂ¶ÈÊÇ·ñ¹ýµÍ
+ 329   1          {
+ 330   2              LedTL_P = 0;
+ 331   2              LedTH_P = 1;
+ 332   2          } else// ÎÂ¶ÈÕý³£
+ 333   1          {
+ 334   2              LedTH_P = 1;
+ 335   2              LedTL_P = 1;
+ 336   2          }
+ 337   1      
+ 338   1          if (humi_value > AlarmHH)// Êª¶ÈÊÇ·ñ¹ý¸ß
+ 339   1          {
+ 340   2              LedHH_P = 0;
+ 341   2              LedHL_P = 1;
+ 342   2          } else if (humi_value < AlarmHL)    // Êª¶ÈÊÇ·ñ¹ýµÍ
+ 343   1          {
+ 344   2              LedHL_P = 0;
+ 345   2              LedHH_P = 1;
+ 346   2          } else    // Êª¶ÈÕý³£
+ 347   1          {
+ 348   2              LedHH_P = 1;
+ 349   2              LedHL_P = 1;
+ 350   2          }
+ 351   1      
+ 352   1          if ((LedHH_P == 0) || (LedHL_P == 0) || (LedTH_P == 0) || (LedTL_P == 0))    // ·äÃùÆ÷ÅÐ¶Ï£¬Ö»ÒªÖÁÉÙ1¸
+             -ö±¨¾¯µÆÁÁ£¬·äÃùÆ÷¾Í±¨¾¯
+ 353   1          {
+ 354   2              for (i = 0; i < 3; i++) {
+ 355   3                  beep = 0;
+ 356   3                  delay_ms(20);
+ 357   3                  beep = 1;
+ 358   3                  delay_ms(20);
+ 359   3              }
+ 360   2          }
+ 361   1      }
+ 362          
+ 363          /******************************************************
+ 364           ** º¯ÊýÃû£ºkey_service
+C51 COMPILER V9.57.0.0   MAIN                                                              05/12/2022 15:39:07 PAGE 7   
+
+ 365           ** ÃèÊö  £º°´¼ü·þÎñº¯Êý
+ 366           ** ÊäÈë  £ºÎÞ
+ 367           ** Êä³ö  £ºÎÞ
+ 368           ** µ÷ÓÃ  £ºÖ÷³ÌÐò
+ 369          ******************************************************/
+ 370          void key_service(void) {
+ 371   1          switch (now_window) {
+ 372   2              case normal_mode: {
+ 373   3                  if (key_value == 1) {
+ 374   4                      now_window = set_mode;
+ 375   4                      curr_menu = 0;
+ 376   4                      wri_string(1, 0, "T:  -           ");//³õÊ¼»¯ÏÔÊ¾
+ 377   4                      wri_string(2, 0, "H:  -           ");//³õÊ¼»¯ÏÔÊ¾
+ 378   4                      lcd_write_char(1, 2, AlarmTL);
+ 379   4                      lcd_write_char(1, 6, AlarmTH);
+ 380   4                      lcd_write_char(2, 2, AlarmHL);
+ 381   4                      lcd_write_char(2, 6, AlarmHH);
+ 382   4                      lcd1602_guanbiao(1, 3, 1);
+ 383   4                  }
+ 384   3              }
+ 385   2                  break;
+ 386   2              case set_mode: {
+ 387   3                  if (key_value == 1) {
+ 388   4                      ++curr_menu;
+ 389   4                      if (curr_menu == 1) {
+ 390   5                          lcd1602_guanbiao(1, 7, 1);
+ 391   5                      } else if (curr_menu == 2) {
+ 392   5                          lcd1602_guanbiao(2, 3, 1);
+ 393   5                      } else if (curr_menu == 3) {
+ 394   5                          lcd1602_guanbiao(2, 7, 1);
+ 395   5                      }
+ 396   4                      if (curr_menu > 3) {
+ 397   5                          curr_menu = 0;
+ 398   5                          lcd1602_guanbiao(2, 7, 0);
+ 399   5                          now_window = normal_mode;
+ 400   5                          wri_string(1, 0, times);//³õÊ¼»¯ÏÔÊ¾
+ 401   5                          wri_string(1, 6, date);
+ 402   5                          wri_string(2, 0, "H:   %RH T:   C ");//³õÊ¼»¯ÏÔÊ¾
+ 403   5                          lcd_write_char(2, 2, humi_value);
+ 404   5                          lcd_write_char(2, 11, temp_value);
+ 405   5                          lcd_wri_com(0xcd);
+ 406   5                          lcd_wri_data(0xdf);
+ 407   5                      }
+ 408   4                  }
+ 409   3                  if (key_value == 2) {
+ 410   4                      if (curr_menu == 0) {
+ 411   5                          if (++AlarmTL > 99) {
+ 412   6                              AlarmTL = 0;
+ 413   6                          }
+ 414   5                          lcd_write_char(1, 2, AlarmTL);
+ 415   5                          lcd1602_guanbiao(1, 3, 1);
+ 416   5                      } else if (curr_menu == 1) {
+ 417   5                          if (++AlarmTH > 99) {
+ 418   6                              AlarmTH = 0;
+ 419   6                          }
+ 420   5                          lcd_write_char(1, 6, AlarmTH);
+ 421   5                          lcd1602_guanbiao(1, 7, 1);
+ 422   5                      } else if (curr_menu == 2) {
+ 423   5                          if (++AlarmHL > 99) {
+ 424   6                              AlarmHL = 0;
+ 425   6                          }
+ 426   5                          lcd_write_char(2, 2, AlarmHL);
+C51 COMPILER V9.57.0.0   MAIN                                                              05/12/2022 15:39:07 PAGE 8   
+
+ 427   5                          lcd1602_guanbiao(2, 3, 1);
+ 428   5                      } else if (curr_menu == 3) {
+ 429   5                          if (++AlarmHH > 99) {
+ 430   6                              AlarmHH = 0;
+ 431   6                          }
+ 432   5                          lcd_write_char(2, 6, AlarmHH);
+ 433   5                          lcd1602_guanbiao(2, 7, 1);
+ 434   5                      }
+ 435   4                  }
+ 436   3                  if (key_value == 3) {
+ 437   4                      if (curr_menu == 0) {
+ 438   5                          if (--AlarmTL < 0) {
+ 439   6                              AlarmTL = 99;
+ 440   6                          }
+ 441   5                          lcd_write_char(1, 2, AlarmTL);
+ 442   5                          lcd1602_guanbiao(1, 3, 1);
+ 443   5                      } else if (curr_menu == 1) {
+ 444   5                          if (--AlarmTH < 0) {
+ 445   6                              AlarmTH = 99;
+ 446   6                          }
+ 447   5                          lcd_write_char(1, 6, AlarmTH);
+ 448   5                          lcd1602_guanbiao(1, 7, 1);
+ 449   5                      } else if (curr_menu == 2) {
+ 450   5                          if (--AlarmHL < 0) {
+ 451   6                              AlarmHL = 99;
+ 452   6                          }
+ 453   5                          lcd_write_char(2, 2, AlarmHL);
+ 454   5                          lcd1602_guanbiao(2, 3, 1);
+ 455   5                      } else if (curr_menu == 3) {
+ 456   5                          if (--AlarmHH < 0) {
+ 457   6                              AlarmHH = 99;
+ 458   6      
+ 459   6                          }
+ 460   5                          lcd_write_char(2, 6, AlarmHH);
+ 461   5                          lcd1602_guanbiao(2, 7, 1);
+ 462   5                      }
+ 463   4                  }
+ 464   3              }
+ 465   2                  break;
+ 466   2          }
+ 467   1      }
+ 468          
+ 469          /******************************************************
+ 470           ** º¯ÊýÃû£ºalm
+ 471           ** ÃèÊö  £º¶¨Ê±ÉÁË¸º¯Êý
+ 472           ** ÊäÈë  : ÎÞ
+ 473           ** Êä³ö  £ºÎÞ
+ 474           ** µ÷ÓÃ  £ºÖÐ¶Ïµ÷ÓÃ
+ 475           ******************************************************/
+ 476          void time_service(void) {
+ 477   1          if (time_100ms_flag) {
+ 478   2              time_100ms_flag = 0;
+ 479   2              if (++cnt_500ms > 5) {
+ 480   3                  cnt_500ms = 0;
+ 481   3                  if (now_window == normal_mode) {
+ 482   4                      EA = 0;
+ 483   4                      DHT11_receive();
+ 484   4                      EA = 1;
+ 485   4                      lcd_write_char(2, 2, humi_value);
+ 486   4                      lcd_write_char(2, 11, temp_value);
+ 487   4                      AlarmJudge();//±¨¾¯º¯Êý
+ 488   4                  }
+C51 COMPILER V9.57.0.0   MAIN                                                              05/12/2022 15:39:07 PAGE 9   
+
+ 489   3              }
+ 490   2      
+ 491   2          }
+ 492   1      
+ 493   1      }
+ 494          
+ 495          /******************************************************
+ 496           ** º¯ÊýÃû£ºinit_all_hardware
+ 497           ** ÃèÊö  £º³õÊ¼»¯ËùÓÐÓ²¼þ£¬¼°Æä±äÁ¿²ÎÊý¡£
+ 498           ** ÊäÈë  £ºÎÞ
+ 499           ** Êä³ö  £ºÎÞ
+ 500           ** µ÷ÓÃ  £ºÖ÷³ÌÐò
+ 501           ******************************************************/
+ 502          void init_all_hardware(void) {
+ 503   1      
+ 504   1          time_init();//¶¨Ê±Æ÷³õÊ¼»¯
+ 505   1          lcd_init();
+ 506   1          lcd_write_char(2, 2, humi_value);
+ 507   1          lcd_write_char(2, 11, temp_value);
+ 508   1          lcd_wri_com(0xcd);
+ 509   1          lcd_wri_data(0xdf);
+ 510   1          key_value = 20;
+ 511   1          now_window = normal_mode;
+ 512   1          cnt_100ms = 0;
+ 513   1          time_100ms_flag = 0;
+ 514   1          curr_menu = 0;
+ 515   1      }
+ 516          
+ 517          void main(void) {
+ 518   1          get_1302(time_1302);//»ñÈ¡Ê±¼ä
+ 519   1          change(); //Ê±¼ä×ª»»
+ 520   1          init_all_hardware();//³õÊ¼»¯Ó²¼þ£¬IOºÍ¶¨Ê±Æ÷
+ 521   1          while (1) {
+ 522   2              get_1302(time_1302);//»ñÈ¡Ê±¼ä
+ 523   2              change(); //Ê±¼ä×ª»»
+ 524   2              key_scan();//°´¼üÉ¨Ãè
+ 525   2              key_service();//°´¼ü·þÎñ´¦Àíº¯Êý
+ 526   2              time_service();//Ê±¼ä´¦Àíº¯Êý
+ 527   2          }
+ 528   1      }
+ 529          
+ 530          /******************************************************
+ 531          ** º¯ÊýÃû£ºtime0_interrupt
+ 532          ** ÃèÊö  £º°´¼üÉ¨Ãèº¯Êý
+ 533          ** ÊäÈë  £ºÎÞ
+ 534          ** Êä³ö  £ºÎÞ
+ 535          ******************************************************/
+ 536          void time0_interrupt()
+ 537          
+ 538          interrupt 1
+ 539          {
+ 540   1      TF0 = 0;//Çå³ý±êÖ¾
+ 541   1      TR0 = 0;
+ 542   1      if (++cnt_100ms>50)
+ 543   1      {
+ 544   2      cnt_100ms = 0;
+ 545   2      time_100ms_flag = 1;
+ 546   2      }
+ 547   1      TR0 = 1;
+ 548   1      TH0 = 0xf8;
+ 549   1      TL0 = 0x2f;//×°ÔØ³õÖµ2ms(65535-63535)
+ 550   1      }
+C51 COMPILER V9.57.0.0   MAIN                                                              05/12/2022 15:39:07 PAGE 10  
+
+ 551          
+ 552          
+ 553          //DS1302Ïà¹Øº¯Êý
+ 554          /*==========================================
+ 555                 D S 1 3 0 2  ³õ Ê¼ »¯
+ 556          ===========================================*/
+ 557          
+ 558          void init_1302(uchar *time) {
+ 559   1          uchar i, add;
+ 560   1          //uchar time_bcd[7];
+ 561   1          add = 0x80;//0Ð´Èë£¬1¶Á³ö
+ 562   1          w_1302(0x8e, 0x00);
+ 563   1          for (i = 0; i < 7; i++) {
+ 564   2              w_1302(add, *time);
+ 565   2              add += 2;
+ 566   2              time++;
+ 567   2          }
+ 568   1          w_1302(0x8e, 0x80);
+ 569   1      }
+ 570          
+ 571          //===========================
+ 572          //    ¶ÁÈ¡µ±Ç°Ê±¼ä
+ 573          //===========================
+ 574          
+ 575          void get_1302(uchar time[]) {
+ 576   1          uchar i;
+ 577   1          uchar add = 0x81;
+ 578   1          w_1302(0x8e, 0x00);
+ 579   1          for (i = 0; i < 7; i++) {
+ 580   2              time[i] = r_1302(add);
+ 581   2              add += 2;
+ 582   2          }
+ 583   1          w_1302(0x8e, 0x80);
+ 584   1      }
+ 585          
+ 586          /*=================================
+ 587             DS1302Ð´ÈëÒ»¸ö×Ö½Ú£¨ÉÏÉýÑØÓÐÐ§£©
+ 588          =================================*/
+ 589          
+ 590          void write_ds1302(uchar dat) {
+ 591   1          uchar i;
+ 592   1          datbyte = dat;
+ 593   1          for (i = 0; i < 8; i++) {
+ 594   2              T_IO = datbyte0;
+ 595   2              T_CLK = 1;
+ 596   2              T_CLK = 0;
+ 597   2              datbyte = datbyte >> 1;
+ 598   2          }
+ 599   1      }
+ 600          
+ 601          /*=======================================
+ 602             DS1302¶ÁÈ¡Ò»¸ö×Ö½Ú£¨ÏÂ½µÑØÓÐÐ§£©
+ 603          =======================================*/
+ 604          
+ 605          uchar read_ds1302(void) {
+ 606   1          uchar i;
+ 607   1      
+ 608   1          for (i = 0; i < 8; i++) {
+ 609   2              datbyte = datbyte >> 1;
+ 610   2              datbyte7 = T_IO;
+ 611   2              T_CLK = 1;
+ 612   2              T_CLK = 0;
+C51 COMPILER V9.57.0.0   MAIN                                                              05/12/2022 15:39:07 PAGE 11  
+
+ 613   2          }
+ 614   1          return (datbyte);
+ 615   1      }
+ 616          
+ 617          /*=========================================
+ 618                   Ö¸¶¨Î»ÖÃ¶ÁÈ¡Êý¾Ý
+ 619          =========================================*/
+ 620          
+ 621          uchar r_1302(uchar add) {
+ 622   1          uchar temp, dat1, dat2;
+ 623   1          T_RST = 0;
+ 624   1          T_CLK = 0;
+ 625   1          T_RST = 1;
+ 626   1          write_ds1302(add);
+ 627   1          temp = read_ds1302();
+ 628   1          T_CLK = 1;
+ 629   1          T_RST = 0;
+ 630   1          dat1 = temp / 16;
+ 631   1          dat2 = temp % 16;
+ 632   1          temp = dat1 * 10 + dat2;
+ 633   1          return (temp);
+ 634   1      }
+ 635          
+ 636          /*==========================================
+ 637                  Ö¸¶¨Î»ÖÃÐ´ÈëÊý¾Ý
+ 638          ==========================================*/
+ 639          
+ 640          void w_1302(uchar add, uchar dat) {
+ 641   1          T_RST = 0;
+ 642   1          T_CLK = 0;
+ 643   1          T_RST = 1;
+ 644   1          write_ds1302(add);
+ 645   1          write_ds1302(dat / 10 << 4 | dat % 10);
+ 646   1          T_CLK = 1;
+ 647   1          T_RST = 0;
+ 648   1      }
+ 649          
+ 650          //DS1302ÊýÖµ×ª»»
+ 651          void change() {
+ 652   1          // Ê± ¼ä µÄ ×ª »»
+ 653   1          times[0] = time_1302[2] / 10 + '0';
+ 654   1          times[1] = time_1302[2] % 10 + '0';
+ 655   1          times[2] = ':';
+ 656   1          times[3] = time_1302[1] / 10 + '0';
+ 657   1          times[4] = time_1302[1] % 10 + '0';
+ 658   1      //  times[5]=':';
+ 659   1      //  times[6]=time_1302[0]/10+'0';
+ 660   1      //  times[7]=time_1302[0]%10+'0';
+ 661   1          times[5] = '\0';
+ 662   1          // ÈÕ ÆÚ µÄ ×ª »»
+ 663   1          date[0] = '2';
+ 664   1          date[1] = '0';
+ 665   1          date[2] = time_1302[6] / 10 + '0';
+ 666   1          date[3] = time_1302[6] % 10 + '0';
+ 667   1          date[4] = '/';
+ 668   1          date[5] = time_1302[4] / 10 + '0';
+ 669   1          date[6] = time_1302[4] % 10 + '0';
+ 670   1          date[7] = '/';
+ 671   1          date[8] = time_1302[3] / 10 + '0';
+ 672   1          date[9] = time_1302[3] % 10 + '0';
+ 673   1          date[10] = '\0';
+ 674   1      }
+C51 COMPILER V9.57.0.0   MAIN                                                              05/12/2022 15:39:07 PAGE 12  
+
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =   1648    ----
+   CONSTANT SIZE    =     51    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =     42      17
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
